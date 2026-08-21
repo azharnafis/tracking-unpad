@@ -1,8 +1,6 @@
 const { pool } = require('../config/db');
+const { sendStatusNotification } = require('./notificationService');
 
-// Fungsi ini melakukan 2 hal SEKALIGUS setiap status order berubah:
-// 1. Update kolom current_status di tabel orders
-// 2. Insert baris baru ke tracking_log (supaya ada jejak riwayatnya)
 async function updateOrderStatus(orderId, newStatus, keterangan, source = 'ADMIN_MANUAL') {
   await pool.query(
     'UPDATE orders SET current_status = ? WHERE order_id = ?',
@@ -14,6 +12,8 @@ async function updateOrderStatus(orderId, newStatus, keterangan, source = 'ADMIN
      VALUES (?, ?, ?, ?)`,
     [orderId, newStatus, keterangan, source]
   );
+
+  await sendStatusNotification(orderId, newStatus);
 }
 
 module.exports = { updateOrderStatus };

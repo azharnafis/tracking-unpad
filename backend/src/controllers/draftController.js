@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { updateOrderStatus } = require('../services/statusService');
+const { findRowByKodeTracking, updateCell } = require('../services/sheetsSyncService');
 
 const MAX_VERSI_DRAFT = 3; // versi 1 = draft awal, 2 & 3 = maksimal 2 kali revisi
 
@@ -10,6 +11,12 @@ async function uploadDraft(req, res) {
 
   if (!link_draft) {
     return res.status(400).json({ message: 'link_draft wajib diisi.' });
+  }
+
+  try {
+    new URL(link_draft);
+  } catch {
+    return res.status(400).json({ message: 'link_draft harus berupa URL valid.' });
   }
 
   try {
@@ -59,10 +66,16 @@ async function approveDraft(req, res) {
       [orderId]
     );
 
-    // Transisi otomatis kedua: Draft disetujui -> Pengesahan
-    await updateOrderStatus(orderId, 'PENGESAHAN', 'Draft disetujui customer', 'ADMIN_MANUAL');
+    // Tulis tanggal persetujuan ke kolom F sheet Draft (Disetujui_Customer)
+    const found = await findRowByKodeTracking('Draft', kode_tracking);
+    if (found) {
+      const tanggalSekarang = new Date().toLocaleDateString('id-ID', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      });
+      await updateCell('Draft', found.rowNumber, 'F', tanggalSekarang);
+    }
 
-    return res.json({ message: 'Draft disetujui, lanjut ke proses pengesahan.' });
+    return res.json({ message: 'Persetujuan Anda telah dikirim, menunggu verifikasi admin.' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -92,7 +105,14 @@ async function requestRevision(req, res) {
       [orderId]
     );
 
-    return res.json({ message: 'Silakan lanjutkan ke WhatsApp admin untuk detail revisi.' });
+    const found = await findRowByKodeTracking('Draft', kode_tracking);
+    if (found) {
+      await updateCell('Draft', found.rowNumber, 'E', 'Revisi');
+    }
+
+    const whatsappUrl = `https://wa.me/${process.env.ADMIN_WA_NUMBER}?text=${encodeURIComponent('Revisi draft untuk kode tracking ' + kode_tracking)}`;
+
+    return res.json({ message: 'Silakan lanjutkan ke WhatsApp admin untuk detail revisi.', whatsapp_url: whatsappUrl });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #fffef8;
+  color: #2d4b31;
+}
+
+button,
+a,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.hero-bg {
+  background:
+    linear-gradient(0deg, rgba(30, 55, 24, .48), rgba(30, 55, 24, .48)),
+    url('/assets/images/landingpage.jpg') center / cover no-repeat,
+    linear-gradient(135deg, #5f7654 0%, #b5bfa3 48%, #6b7a63 100%);
+}
+
+.map-fallback {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, .38), transparent 45%),
+    linear-gradient(30deg, #a4abad 25%, #c1c7c7 25% 30%, #a4abad 30% 50%, #c1c7c7 50% 55%, #a4abad 55% 75%, #c1c7c7 75% 80%, #a4abad 80%);
+  filter: grayscale(1);
+}
+
+::selection {
+  background: #ffe55b;
+  color: #2d4820;
+}
