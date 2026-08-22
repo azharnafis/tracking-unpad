@@ -1,10 +1,9 @@
 const express = require('express');
-const router = express.Router();
 const { validateTrackingCode } = require('../middleware/validateTrackingCode');
-const { uploadDraft, approveDraft, requestRevision } = require('../controllers/draftController');
+const { getLatestDraft, recordDecision } = require('../controllers/draftController');
 
-router.post('/:kode_tracking/upload', validateTrackingCode, uploadDraft);
-router.post('/:kode_tracking/approve', validateTrackingCode, approveDraft);
-router.post('/:kode_tracking/revisi', validateTrackingCode, requestRevision);
+// Path relatif terhadap /api/tracking/:kode_tracking (mergeParams).
+const router = express.Router({ mergeParams: true });
+router.get('/latest', validateTrackingCode, getLatestDraft);router.post('/decision', validateTrackingCode, recordDecision);
 
 module.exports = router;

@@ -3,9 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 const { testConnection } = require('./src/config/db');
 const trackingRoutes = require('./src/routes/trackingRoutes');
-const paymentRoutes = require('./src/routes/paymentRoutes');
-const draftRoutes = require('./src/routes/draftRoutes');
-const questionnaireRoutes = require('./src/routes/questionnaireRoutes');
+const adminRoutes = require('./src/routes/adminRoutes');
 const cron = require('node-cron');
 const { runSync } = require('./src/services/cronSyncService');
 const { generalLimiter, trackingLimiter } = require('./src/middleware/rateLimiter');
@@ -26,15 +24,13 @@ app.use(cors({
 
 app.use(express.json());
 app.use(generalLimiter);
-app.use('/api/draft', draftRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend Lab Tracking jalan!' });
 });
 
 app.use('/api/tracking', trackingLimiter, trackingRoutes);
-app.use('/api/payment', paymentRoutes);
-app.use('/api/questionnaire', questionnaireRoutes);
+app.use('/api/admin', generalLimiter, adminRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);

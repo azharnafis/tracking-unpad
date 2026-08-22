@@ -1,10 +1,30 @@
 const { pool } = require('../config/db');
 const { updateOrderStatus } = require('../services/statusService');
-const { findRowByKodeTracking, updateCell } = require('../services/sheetsSyncService');
+const { sendDraftRevisionNotification } = require('../services/notificationService');
+const { KEPUTUSAN_CUSTOMER } = require('../constants');
 
-const MAX_VERSI_DRAFT = 3; // versi 1 = draft awal, 2 & 3 = maksimal 2 kali revisi
+async function findOrder(kodeTracking) {
+  const [rows] = await pool.query(
+    'SELECT order_id, current_status FROM orders WHERE kode_tracking = ?',
+    [kodeTracking]
+  );
+  return rows[0] || null;
+}
 
-// Admin upload draft baru (pertama kali, atau setelah revisi)
+async function findLatestDraft(orderId) {
+  const [rows] = await pool.query(
+    `SELECT draft_id, versi_draft, link_draft, tanggal_upload,
+            keputusan_customer, tanggal_keputusan,
+            tindak_lanjut_admin, tanggal_tindak_lanjut
+     FROM drafts WHERE order_id = ?
+     ORDER BY versi_draft DESC LIMIT 1`,
+    [orderId]
+  );
+  return rows[0] || null;
+}
+
+// ADMIN: upload draft baru (versi awal atau revisi).
+// Revisi hanya sah bila versi terbaru berkeputusan REVISI dari customer.
 async function uploadDraft(req, res) {
   const { kode_tracking } = req.params;
   const { link_draft } = req.body;
@@ -12,7 +32,6 @@ async function uploadDraft(req, res) {
   if (!link_draft) {
     return res.status(400).json({ message: 'link_draft wajib diisi.' });
   }
-
   try {
     new URL(link_draft);
   } catch {
@@ -20,103 +39,176 @@ async function uploadDraft(req, res) {
   }
 
   try {
-    const [orders] = await pool.query('SELECT order_id FROM orders WHERE kode_tracking = ?', [kode_tracking]);
-    if (orders.length === 0) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
-    const orderId = orders[0].order_id;
+    const order = await findOrder(kode_tracking);
+    if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
 
-    const [[latest]] = await pool.query(
-      'SELECT versi_draft FROM drafts WHERE order_id = ? ORDER BY versi_draft DESC LIMIT 1',
-      [orderId]
-    );
-    const versiBaru = latest ? latest.versi_draft + 1 : 1;
-
-    if (versiBaru > MAX_VERSI_DRAFT) {
-      return res.status(400).json({ message: 'Batas maksimal 2 kali revisi sudah tercapai.' });
-    }
-
-    await pool.query(
-      `INSERT INTO drafts (order_id, versi_draft, link_draft, tanggal_upload, status_draft)
-       VALUES (?, ?, ?, NOW(), 'MENUNGGU_REVIEW')`,
-      [orderId, versiBaru, link_draft]
-    );
-
-    // Upload draft pertama kali -> status order pindah ke REVIEW_DRAFT
-    if (versiBaru === 1) {
-      await updateOrderStatus(orderId, 'REVIEW_DRAFT', 'Draft pertama diupload admin', 'ADMIN_MANUAL');
-    }
-
-    return res.status(201).json({ message: `Draft versi ${versiBaru} berhasil diupload.` });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Terjadi kesalahan server.' });
-  }
-}
-
-// Customer klik "Lanjutkan ke Pengesahan"
-async function approveDraft(req, res) {
-  const { kode_tracking } = req.params;
-  try {
-    const [orders] = await pool.query('SELECT order_id FROM orders WHERE kode_tracking = ?', [kode_tracking]);
-    if (orders.length === 0) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
-    const orderId = orders[0].order_id;
-
-    await pool.query(
-      `UPDATE drafts SET status_draft = 'DISETUJUI'
-       WHERE order_id = ? ORDER BY versi_draft DESC LIMIT 1`,
-      [orderId]
-    );
-
-    // Tulis tanggal persetujuan ke kolom F sheet Draft (Disetujui_Customer)
-    const found = await findRowByKodeTracking('Draft', kode_tracking);
-    if (found) {
-      const tanggalSekarang = new Date().toLocaleDateString('id-ID', {
-        day: 'numeric', month: 'long', year: 'numeric',
+    const latest = await findLatestDraft(order.order_id);
+    if (latest && latest.keputusan_customer !== 'REVISI') {
+      return res.status(400).json({
+        message: 'Draft revisi hanya dapat diupload setelah customer mengajukan revisi pada versi terbaru.',
       });
-      await updateCell('Draft', found.rowNumber, 'F', tanggalSekarang);
     }
 
-    return res.json({ message: 'Persetujuan Anda telah dikirim, menunggu verifikasi admin.' });
+    const versiBaru = latest ? latest.versi_draft + 1 : 1;
+    await pool.query(
+      `INSERT INTO drafts (order_id, versi_draft, link_draft, tanggal_upload, tindak_lanjut_admin)
+       VALUES (?, ?, ?, NOW(), 'MENUNGGU_TINDAKAN')`,
+      [order.order_id, versiBaru, link_draft]
+    );
+
+    if (versiBaru === 1) {
+      await updateOrderStatus(order.order_id, 'REVIEW_DRAFT', 'Draft pertama diupload admin', 'ADMIN_MANUAL');
+    } else {
+      await sendDraftRevisionNotification(order.order_id);
+    }
+
+    return res.status(201).json({ message: `Draft versi ${versiBaru} berhasil diupload.`, versi_draft: versiBaru });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
   }
 }
 
-// Customer klik "Ajukan Catatan Revisi"
-async function requestRevision(req, res) {
+// CUSTOMER: lihat draft terbaru.
+async function getLatestDraft(req, res) {
   const { kode_tracking } = req.params;
   try {
-    const [orders] = await pool.query('SELECT order_id FROM orders WHERE kode_tracking = ?', [kode_tracking]);
-    if (orders.length === 0) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
-    const orderId = orders[0].order_id;
+    const order = await findOrder(kode_tracking);
+    if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
 
-    const [[latest]] = await pool.query(
-      'SELECT versi_draft FROM drafts WHERE order_id = ? ORDER BY versi_draft DESC LIMIT 1',
-      [orderId]
-    );
+    const latest = await findLatestDraft(order.order_id);
+    if (!latest) return res.status(404).json({ message: 'Draft belum tersedia.' });
 
-    if (latest && latest.versi_draft >= MAX_VERSI_DRAFT) {
-      return res.status(400).json({ message: 'Batas maksimal 2 kali revisi sudah tercapai.' });
+    return res.json({
+      versi_draft: latest.versi_draft,
+      link_draft: latest.link_draft,
+      tanggal_upload: latest.tanggal_upload,
+      keputusan_customer: latest.keputusan_customer,
+      tindak_lanjut_admin: latest.tindak_lanjut_admin,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Terjadi kesalahan server.' });
+  }
+}
+
+// CUSTOMER: catat keputusan SETUJU/REVISI pada versi terbaru.
+// Endpoint ini TIDAK pernah mengubah status tracking.
+async function recordDecision(req, res) {
+  const { kode_tracking } = req.params;
+  const { keputusan } = req.body;
+
+  if (!KEPUTUSAN_CUSTOMER.includes(keputusan)) {
+    return res.status(400).json({ message: 'keputusan harus SETUJU atau REVISI.' });
+  }
+
+  try {
+    const order = await findOrder(kode_tracking);
+    if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
+
+    const latest = await findLatestDraft(order.order_id);
+    if (!latest) return res.status(404).json({ message: 'Draft belum tersedia.' });
+
+    if (latest.keputusan_customer) {
+      return res.status(409).json({
+        message: `Keputusan untuk versi draft ${latest.versi_draft} sudah tercatat dan tidak dapat diubah.`,
+      });
     }
 
     await pool.query(
-      `UPDATE drafts SET status_draft = 'REVISI'
-       WHERE order_id = ? ORDER BY versi_draft DESC LIMIT 1`,
-      [orderId]
+      'UPDATE drafts SET keputusan_customer = ?, tanggal_keputusan = NOW() WHERE draft_id = ?',
+      [keputusan, latest.draft_id]
     );
 
-    const found = await findRowByKodeTracking('Draft', kode_tracking);
-    if (found) {
-      await updateCell('Draft', found.rowNumber, 'E', 'Revisi');
+    if (keputusan === 'SETUJU') {
+      return res.json({
+        message: 'Persetujuan Anda telah tercatat dan sedang menunggu proses pengesahan oleh admin.',
+        keputusan_customer: keputusan,
+      });
     }
-
-    const whatsappUrl = `https://wa.me/${process.env.ADMIN_WA_NUMBER}?text=${encodeURIComponent('Revisi draft untuk kode tracking ' + kode_tracking)}`;
-
-    return res.json({ message: 'Silakan lanjutkan ke WhatsApp admin untuk detail revisi.', whatsapp_url: whatsappUrl });
+    return res.json({
+      message: 'Catatan revisi Anda telah tercatat. Silakan hubungi admin via WhatsApp untuk detail revisi.',
+      keputusan_customer: keputusan,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
   }
 }
 
-module.exports = { uploadDraft, approveDraft, requestRevision };
+// ADMIN: riwayat seluruh versi draft + keputusan customer per versi.
+async function listDrafts(req, res) {
+  const { kode_tracking } = req.params;
+  try {
+    const order = await findOrder(kode_tracking);
+    if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
+
+    const [rows] = await pool.query(
+      `SELECT versi_draft, link_draft, tanggal_upload,
+              keputusan_customer, tanggal_keputusan,
+              tindak_lanjut_admin, tanggal_tindak_lanjut
+       FROM drafts WHERE order_id = ?
+       ORDER BY versi_draft ASC`,
+      [order.order_id]
+    );
+
+    return res.json({ drafts: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Terjadi kesalahan server.' });
+  }
+}
+
+// ADMIN: satu-satunya jalur menuju status PENGESAHAN.
+// Wajib: keputusan customer pada versi terbaru = SETUJU.
+async function proceedToPengesahan(req, res) {
+  const { kode_tracking } = req.params;
+  try {
+    const order = await findOrder(kode_tracking);
+    if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
+
+    const latest = await findLatestDraft(order.order_id);
+    if (!latest) {
+      return res.status(400).json({ message: 'Draft belum tersedia.' });
+    }
+    if (latest.keputusan_customer !== 'SETUJU') {
+      return res.status(409).json({
+        message: 'Tidak dapat lanjut ke Pengesahan: customer belum menyetujui draft terbaru.',
+      });
+    }
+    if (latest.tindak_lanjut_admin === 'LANJUT_KE_PENGESAHAN') {
+      return res.status(409).json({ message: 'Draft ini sudah dilanjutkan ke Pengesahan sebelumnya.' });
+    }
+    if (order.current_status !== 'REVIEW_DRAFT') {
+      return res.status(409).json({
+        message: `Lanjut ke Pengesahan hanya berlaku saat status REVIEW_DRAFT (status saat ini: ${order.current_status}).`,
+      });
+    }
+
+    await pool.query(
+      `UPDATE drafts SET tindak_lanjut_admin = 'LANJUT_KE_PENGESAHAN', tanggal_tindak_lanjut = NOW()
+       WHERE draft_id = ?`,
+      [latest.draft_id]
+    );
+
+    await updateOrderStatus(
+      order.order_id,
+      'PENGESAHAN',
+      'Draft disetujui customer, dilanjutkan admin ke Pengesahan',
+      'ADMIN_MANUAL'
+    );
+
+    return res.json({ message: 'Order dilanjutkan ke tahap Pengesahan.', current_status: 'PENGESAHAN' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Terjadi kesalahan server.' });
+  }
+}
+
+module.exports = {
+  uploadDraft,
+  getLatestDraft,
+  recordDecision,
+  listDrafts,
+  proceedToPengesahan,
+};

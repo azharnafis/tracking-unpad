@@ -2,23 +2,7 @@ const { pool } = require('../config/db');
 const { sheets, SPREADSHEET_ID } = require('../config/sheets');
 const { updateOrderStatus } = require('./statusService');
 
-const STATUS_LABEL_TO_ENUM = {
-  'Sampel Diterima': 'SAMPEL_DITERIMA',
-  'Pembayaran': 'PEMBAYARAN',
-  'Proses Analisis': 'PROSES_ANALISIS',
-  'Input Data Hasil': 'INPUT_DATA_HASIL',
-  'Review Draft': 'REVIEW_DRAFT',
-  'Pengesahan': 'PENGESAHAN',
-  'Download Sertifikat': 'DOWNLOAD_SERTIFIKAT',
-};
-
-const STATUS_ORDER = [
-  'SAMPEL_DITERIMA', 'PEMBAYARAN', 'PROSES_ANALISIS', 'INPUT_DATA_HASIL',
-  'REVIEW_DRAFT', 'PENGESAHAN', 'DOWNLOAD_SERTIFIKAT',
-];
-
 const MAX_VERSI_DRAFT = 3;
-const VALID_DRAFT_STATUSES = ['MENUNGGU_REVIEW', 'DISETUJUI', 'REVISI'];
 
 async function syncNewOrders() {
   const res = await sheets.spreadsheets.values.get({
@@ -101,46 +85,9 @@ async function syncNewOrders() {
   }
 }
 
-// BARU: sinkronisasi umum dropdown Status_Tracking -> current_status di MySQL
-// Cuma boleh MAJU (mengikuti urutan STATUS_ORDER), tidak pernah mundur.
-async function syncManualStatusChanges() {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Status_Tracking!A2:E1000',
-  });
-
-  const rows = res.data.values || [];
-
-  for (const row of rows) {
-    const kodeTracking = row[0];
-    const statusLabel = row[1];
-    const keterangan = row[2];
-    if (!kodeTracking || !statusLabel) continue;
-
-    const sheetStatus = STATUS_LABEL_TO_ENUM[statusLabel];
-    if (!sheetStatus) continue; // label di sheet tidak dikenali, lewati
-
-    const [orders] = await pool.query(
-      'SELECT order_id, current_status FROM orders WHERE kode_tracking = ?',
-      [kodeTracking]
-    );
-    if (orders.length === 0) continue;
-    const order = orders[0];
-
-    const currentIndex = STATUS_ORDER.indexOf(order.current_status);
-    const sheetIndex = STATUS_ORDER.indexOf(sheetStatus);
-
-    if (sheetIndex > currentIndex) {
-      await updateOrderStatus(
-        order.order_id,
-        sheetStatus,
-        keterangan || 'Status diubah admin via Google Sheets',
-        'AUTO_SCRIPT'
-      );
-      console.log(`[SYNC] ${kodeTracking}: ${order.current_status} -> ${sheetStatus} (manual dari Status_Tracking)`);
-    }
-  }
-}
+// Jalur status manual (syncManualStatusChanges + sheet Status_Tracking)
+// DIHAPUS TOTAL — status hanya berubah sebagai efek business event
+// tervalidasi (AR-001 s/d AR-014), tidak pernah dari teks bebas admin.
 
 async function syncPaymentValidations() {
   const res = await sheets.spreadsheets.values.get({
@@ -163,8 +110,8 @@ async function syncPaymentValidations() {
 
     const order = orders[0];
     if (order.current_status === 'PEMBAYARAN') {
-      await updateOrderStatus(order.order_id, 'PROSES_ANALISIS', 'Pembayaran divalidasi admin via Sheets', 'AUTO_SCRIPT');
-      console.log(`[SYNC] ${kodeTracking}: PEMBAYARAN -> PROSES_ANALISIS`);
+      await updateOrderStatus(order.order_id, 'ANALISIS', 'Pembayaran divalidasi admin via Sheets', 'AUTO_SCRIPT');
+      console.log(`[SYNC] ${kodeTracking}: PEMBAYARAN -> ANALISIS`);
     }
   }
 }
@@ -194,17 +141,6 @@ async function syncDraftUploads() {
       continue;
     }
 
-    const statusDraftRaw = row[4];
-    let statusDraft = 'MENUNGGU_REVIEW';
-    if (statusDraftRaw) {
-      const normalized = String(statusDraftRaw).trim().toUpperCase();
-      if (VALID_DRAFT_STATUSES.includes(normalized)) {
-        statusDraft = normalized;
-      } else {
-        console.log(`[SYNC] Draft: status tidak valid "${statusDraftRaw}" untuk ${kodeTracking} → fallback ke MENUNGGU_REVIEW`);
-      }
-    }
-
     const [orders] = await pool.query(
       'SELECT order_id, current_status FROM orders WHERE kode_tracking = ?',
       [kodeTracking]
@@ -220,42 +156,15 @@ async function syncDraftUploads() {
     if (existing.length > 0) continue;
 
     await pool.query(
-      `INSERT INTO drafts (order_id, versi_draft, link_draft, tanggal_upload, status_draft)
-       VALUES (?, ?, ?, ?, ?)`,
-      [order.order_id, versiRaw, linkDraft, parsedDate, statusDraft]
+      `INSERT INTO drafts (order_id, versi_draft, link_draft, tanggal_upload, tindak_lanjut_admin)
+       VALUES (?, ?, ?, ?, 'MENUNGGU_TINDAKAN')`,
+      [order.order_id, versiRaw, linkDraft, parsedDate]
     );
     console.log(`[SYNC] Draft ditambahkan: ${kodeTracking} versi ${versiRaw}`);
 
     if (versiRaw === 1 && order.current_status !== 'REVIEW_DRAFT') {
       await updateOrderStatus(order.order_id, 'REVIEW_DRAFT', 'Draft pertama terdeteksi dari Google Sheets', 'AUTO_SCRIPT');
       console.log(`[SYNC] ${kodeTracking}: -> REVIEW_DRAFT (draft versi 1 dari Sheets)`);
-    }
-  }
-}
-
-async function syncDraftApprovals() {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Draft!A2:E1000',
-  });
-
-  const rows = res.data.values || [];
-
-  for (const row of rows) {
-    const kodeTracking = row[0];
-    const statusDraft = row[4];
-    if (!kodeTracking || statusDraft !== 'Disetujui') continue;
-
-    const [orders] = await pool.query(
-      'SELECT order_id, current_status FROM orders WHERE kode_tracking = ?',
-      [kodeTracking]
-    );
-    if (orders.length === 0) continue;
-
-    const order = orders[0];
-    if (order.current_status === 'REVIEW_DRAFT') {
-      await updateOrderStatus(order.order_id, 'PENGESAHAN', 'Draft disetujui via Sheets', 'AUTO_SCRIPT');
-      console.log(`[SYNC] ${kodeTracking}: REVIEW_DRAFT -> PENGESAHAN`);
     }
   }
 }
@@ -309,9 +218,7 @@ async function runSync() {
   await syncNewOrders();
   await syncDraftUploads();
   await syncPaymentValidations();
-  await syncDraftApprovals();
   await syncCertificates();
-  await syncManualStatusChanges();
 }
 
 module.exports = { runSync };
