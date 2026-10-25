@@ -11,4 +11,4 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 
-module.exports = { sheets, SPREADSHEET_ID };
+module.exports = { auth, sheets, SPREADSHEET_ID };

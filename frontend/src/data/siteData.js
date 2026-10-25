@@ -1,12 +1,14 @@
 import {
   Atom,
   BadgeCheck,
+  Compass,
   CreditCard,
   Download,
   Droplets,
   FileCheck2,
   FileSearch,
   FlaskConical,
+  GraduationCap,
   Grid2X2,
   Inbox,
   Layers,
@@ -15,6 +17,7 @@ import {
   PenLine,
   ReceiptText,
   Sprout,
+  TrendingUp,
 } from 'lucide-react'
 
 export const navItems = [
@@ -22,48 +25,120 @@ export const navItems = [
   { label: 'Lacak Sampel', page: 'tracking' },
 ]
 
-export const services = [
+export const labSlides = [
   {
-    title: 'Pupuk Hayati (Cair/Padat)',
-    description: 'Uji mutu dan efektivitas formula mikroorganisme pupuk.',
-    icon: FlaskConical,
+    image: '/assets/images/slide1.jpeg',
+    caption: 'Kepala Laboratorium KTNT UNPAD beserta Tim Peneliti',
   },
   {
-    title: 'Pupuk Anorganik (Cair/Padat)',
-    description: 'Analisis kadar unsur hara makro dan mikro kimia.',
-    icon: Atom,
+    image: '/assets/images/slide2.jpeg',
+    caption: 'Fasilitas Instrumentasi Pengujian dan Analisis',
   },
   {
-    title: 'Pupuk Organik (Cair/Padat)',
-    description: 'Standardisasi kandungan bahan organik dan hara alami.',
-    icon: Microscope,
-  },
-  {
-    title: 'Pembenah Tanah Organik',
-    description: 'Uji efektivitas formula organik perbaikan struktur tanah.',
-    icon: Sprout,
-  },
-  {
-    title: 'Pembenah Tanah Senyawa Humat',
-    description: 'Analisis konsentrasi asam humat untuk kesuburan.',
-    icon: Leaf,
-  },
-  {
-    title: 'Pembenah Tanah Anorganik',
-    description: 'Pengujian mutu bahan kaptan, dolomit, dan sejenisnya.',
-    icon: Grid2X2,
-  },
-  {
-    title: 'Analisis Sampel Tanah',
-    description: 'Evaluasi karakteristik kimia dan fisik tanah pertanian.',
-    icon: Layers,
-  },
-  {
-    title: 'Analisis Sampel Air',
-    description: 'Uji kelayakan dan kualitas air irigasi budidaya.',
-    icon: Droplets,
+    image: '/assets/images/slide3.jpeg',
+    caption: 'Ruang Preparasi dan Pengujian Sampel',
   },
 ]
+
+export const serviceCategories = [
+  {
+    title: 'Pengujian Mutu',
+    description: 'Pengujian pupuk, pembenah tanah, pestisida, air, tanah, dan tanaman.',
+    image: '/assets/images/pengujianmutu.jpeg',
+    icon: FlaskConical,
+    iconBg: '#C4EAB6',
+    iconColor: '#496B41',
+  },
+  {
+    title: 'Pengujian Efektivitas',
+    description: 'Pengujian efektivitas produk pertanian di lahan sendiri dipantau tim ahli.',
+    image: '/assets/images/pengujianefektivitas.jpeg',
+    icon: TrendingUp,
+    iconBg: 'rgba(200, 167, 75, 0.2)',
+    iconColor: '#4F3D00',
+  },
+  {
+    title: 'Jasa Survei & Sampling',
+    description: 'Petugas survey dan pengambil contoh tersertifikasi.',
+    image: '/assets/images/jasasurveisampling.jpeg',
+    icon: Compass,
+    iconBg: '#D4EABD',
+    iconColor: '#101F05',
+  },
+  {
+    title: 'Konsultan & Pelatihan',
+    description: 'Program pelatihan dan konsultasi berkelanjutan.',
+    image: '/assets/images/konsultanpelatihan.jpeg',
+    icon: GraduationCap,
+    iconBg: '#E7E2DA',
+    iconColor: '#44483F',
+  },
+]
+
+export const services = [
+  {
+    number: '1',
+    title: 'Pupuk Organik',
+    description: 'Standardisasi kandungan bahan organik dan hara alami.',
+  },
+  {
+    number: '2',
+    title: 'Pupuk Anorganik',
+    description: 'Analisis kadar unsur hara makro dan mikro kimia.',
+  },
+  {
+    number: '3',
+    title: 'Pupuk Hayati',
+    description: 'Uji mutu dan efektivitas formula mikroorganisme pupuk.',
+  },
+  {
+    number: '4',
+    title: 'Pembenah Tanah',
+    description: 'Uji efektivitas formula organik perbaikan struktur tanah.',
+  },
+  {
+    number: '5',
+    title: 'Tanah',
+    description: 'Analisis konsentrasi asam humat untuk kesuburan.',
+  },
+  {
+    number: '6',
+    title: 'Air',
+    description: 'Pengujian mutu bahan kaptan, dolomit, dan sejenisnya.',
+  },
+  {
+    number: '7',
+    title: 'Tanaman',
+    description: 'Evaluasi karakteristik kimia dan fisik tanah pertanian.',
+  },
+  {
+    number: '8',
+    title: 'Pelatihan',
+    description: 'Uji kelayakan dan kualitas air irigasi budidaya.',
+  },
+]
+
+export const adminWhatsapp = {
+  phoneDisplay: '085861927889',
+  phoneRaw: '6285861927889',
+  whatsappUrl: 'https://wa.me/6285861927889',
+}
+
+export const contactInfo = {
+  addressLines: [
+    'Gedung 9 (ex Pedca), Fakultas Pertanian, UNPAD',
+    'Jl. Raya Bandung Sumedang KM. 21, Jatinangor',
+  ],
+  emails: [
+    'kalab.ktnt.faperta@unpad.ac.id',
+    'ktnt.pafertaunpad@gmail.com',
+  ],
+  phoneDisplay: '+62 821 2860 8109',
+  phoneRaw: '6282128608109',
+  whatsappUrl: 'https://wa.me/6282128608109',
+  instagramUsername: '@labktnt.unpad',
+  instagramUrl: 'https://www.instagram.com/labktnt.unpad?igsi=azN2Yjc5dGxyeTN5',
+}
 
 export const processSteps = [
   {
@@ -85,31 +160,24 @@ export const processSteps = [
     title: 'Analisis',
     description: 'Pengujian lab',
     icon: FlaskConical,
-    status: 'PROSES_ANALISIS',
+    status: 'ANALISIS',
   },
   {
     number: '4',
-    title: 'Input Data',
-    description: 'Perekaman hasil',
-    icon: Grid2X2,
-    status: 'INPUT_DATA_HASIL',
-  },
-  {
-    number: '5',
     title: 'Review Draft',
-    description: 'Validasi internal',
+    description: 'Validasi draft hasil',
     icon: FileSearch,
     status: 'REVIEW_DRAFT',
   },
   {
-    number: '6',
+    number: '5',
     title: 'Pengesahan',
     description: 'Tanda tangan ka. lab',
     icon: BadgeCheck,
     status: 'PENGESAHAN',
   },
   {
-    number: '7',
+    number: '6',
     title: 'Unduh Sertifikat',
     description: 'Hasil digital',
     icon: Download,
@@ -135,5 +203,5 @@ export const sampleFlowCards = [
   },
 ]
 
-export const googleMapsUrl = 'https://share.google/0cH9Bv1biYJFx2ZKz'
-export const googleMapsEmbedUrl = ''
+export const googleMapsUrl = 'https://maps.app.goo.gl/C6smYW9TWh9B5zK46'
+export const googleMapsEmbedUrl = 'https://maps.google.com/maps?q=Laboratorium+Kimia+Tanah+dan+Nutrisi+Tanaman+Fakultas+Pertanian+Universitas+Padjadjaran+Jatinangor&t=&z=16&ie=UTF8&iwloc=&output=embed'

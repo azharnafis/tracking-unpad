@@ -1,6 +1,8 @@
 const { pool } = require('../config/db');
 const { uploadToDrive } = require('../services/driveService');
 const { updateOrderStatus } = require('../services/statusService');
+const { writeBackByKodeTracking } = require('../services/sheetsSyncService');
+const { toIsoDate } = require('../utils/businessDays');
 const {
   STATUS_ORDER,
   JENIS_FAKTUR,
@@ -49,12 +51,19 @@ async function getPaymentDetail(req, res) {
 
     return res.json({
       invoice: payment && payment.link_invoice
-        ? { link_invoice: payment.link_invoice, no_invoice: payment.no_invoice, tanggal_invoice: payment.tanggal_invoice }
+        ? {
+            link_invoice: payment.link_invoice,
+            no_invoice: payment.no_invoice,
+            tanggal_invoice: payment.tanggal_invoice
+              ? toIsoDate(new Date(payment.tanggal_invoice))
+              : null,
+          }
         : null,
       rekening: payment && payment.rekening_pembayaran ? REKENING_MAP[payment.rekening_pembayaran] : null,
       jenis_faktur: payment ? payment.jenis_faktur : null,
       npwp: payment ? payment.npwp : null,
-      link_kwitansi: payment ? payment.link_kwitansi : null,
+      link_kwitansi: payment ? (payment.link_kwitansi || null) : null,
+      keterangan: payment ? (payment.keterangan || null) : null,
       status_validasi: payment ? payment.status_validasi : null,
       tanggal_upload_bukti: payment ? payment.tanggal_upload_bukti : null,
     });
@@ -97,6 +106,16 @@ async function submitFaktur(req, res) {
          VALUES (?, ?, ?, 'PENDING')`,
         [order.order_id, jenis_faktur, npwpValue]
       );
+    }
+
+    // Tulis-balik ke Google Sheets (non-blocking, tidak menggagalkan response API bila sheets gagal)
+    try {
+      await writeBackByKodeTracking('PAYMENT', kode_tracking, {
+        jenisFaktur: jenis_faktur,
+        npwp: npwpValue || '',
+      });
+    } catch (sheetErr) {
+      console.error(`[WRITE_BACK] submitFaktur gagal sync Sheets (${kode_tracking}):`, sheetErr.message);
     }
 
     return res.json({
@@ -145,7 +164,14 @@ async function uploadPaymentProof(req, res) {
       [buktiUrl, payment.payment_id]
     );
 
-    // Tulis-balik link bukti bayar ke sheet PAYMENT menyusul di Phase 4.
+    // Tulis-balik link bukti bayar ke sheet PAYMENT (non-blocking)
+    try {
+      await writeBackByKodeTracking('PAYMENT', kode_tracking, {
+        linkBuktiBayar: buktiUrl,
+      });
+    } catch (sheetErr) {
+      console.error(`[WRITE_BACK] uploadPaymentProof gagal sync Sheets (${kode_tracking}):`, sheetErr.message);
+    }
 
     return res.status(201).json({
       message: 'Bukti pembayaran berhasil diupload, menunggu validasi admin.',

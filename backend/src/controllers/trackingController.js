@@ -57,7 +57,7 @@ async function getLatestPaymentRow(orderId) {
   const [rows] = await pool.query(
     `SELECT bukti_pembayaran_url, status_validasi, tanggal_validasi,
             link_invoice, no_invoice, tanggal_invoice,
-            jenis_faktur, npwp, link_kwitansi, rekening_pembayaran,
+            jenis_faktur, npwp, link_kwitansi, keterangan, rekening_pembayaran,
             tanggal_upload_bukti
      FROM payments WHERE order_id = ?
      ORDER BY payment_id DESC LIMIT 1`,
@@ -66,8 +66,8 @@ async function getLatestPaymentRow(orderId) {
   return rows[0] || null;
 }
 
-function buildEstimasi(order) {
-  return hitungEstimasi(order.tanggal_masuk, order.estimasi_hari, order.current_status);
+function buildEstimasi(order, cert = null) {
+  return hitungEstimasi(order.tanggal_masuk, order.estimasi_hari, order.current_status, cert);
 }
 
 // Periode revisi sertifikat: tanggal terbit + 14 hari kerja (informational saja).
@@ -110,12 +110,19 @@ async function getTrackingStatus(req, res) {
     const paymentSummary = payment
       ? {
           invoice: payment.link_invoice
-            ? { link_invoice: payment.link_invoice, no_invoice: payment.no_invoice, tanggal_invoice: payment.tanggal_invoice }
+            ? {
+                link_invoice: payment.link_invoice,
+                no_invoice: payment.no_invoice,
+                tanggal_invoice: payment.tanggal_invoice
+                  ? toIsoDate(new Date(payment.tanggal_invoice))
+                  : null,
+              }
             : null,
           rekening: payment.rekening_pembayaran ? REKENING_MAP[payment.rekening_pembayaran] : null,
           jenis_faktur: payment.jenis_faktur,
           npwp: payment.npwp,
-          link_kwitansi: payment.link_kwitansi,
+          link_kwitansi: payment.link_kwitansi || null,
+          keterangan: payment.keterangan || null,
           status_validasi: payment.status_validasi,
         }
       : null;
@@ -132,7 +139,7 @@ async function getTrackingStatus(req, res) {
     const { kode_invoice, invoice_file_url, ...orderClean } = order;
 
     return res.json({
-      order: { ...orderClean, estimasi: buildEstimasi(order) },
+      order: { ...orderClean, estimasi: buildEstimasi(order, cert) },
       history,
       payment: paymentSummary,
       latest_draft: latestDraft,
@@ -182,7 +189,8 @@ async function getEstimation(req, res) {
     const order = await findOrderByKode(kode_tracking);
     if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
 
-    return res.json(buildEstimasi(order));
+    const cert = await getCertificateRow(order.order_id);
+    return res.json(buildEstimasi(order, cert));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -196,9 +204,10 @@ async function getOrderDetail(req, res) {
     const order = await findOrderByKode(kode_tracking);
     if (!order) return res.status(404).json({ message: 'Kode tracking tidak ditemukan.' });
 
+    const cert = await getCertificateRow(order.order_id);
     return res.json({
       order,
-      estimasi: buildEstimasi(order),
+      estimasi: buildEstimasi(order, cert),
     });
   } catch (err) {
     console.error(err);

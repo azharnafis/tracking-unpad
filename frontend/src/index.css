@@ -12,8 +12,10 @@ html {
 
 body {
   margin: 0;
-  background: #fffef8;
-  color: #2d4b31;
+  background: #FBFCF7;
+  color: #1D1C17;
+  font-family: 'Hanken Grotesk', Inter, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -28,9 +30,8 @@ button {
 
 .hero-bg {
   background:
-    linear-gradient(0deg, rgba(30, 55, 24, .48), rgba(30, 55, 24, .48)),
-    url('/assets/images/landingpage.jpg') center / cover no-repeat,
-    linear-gradient(135deg, #5f7654 0%, #b5bfa3 48%, #6b7a63 100%);
+    linear-gradient(180deg, rgba(36, 63, 38, 0.65) 0%, rgba(118, 161, 108, 0.45) 100%),
+    url('/assets/images/landipage.jpeg') center / cover no-repeat;
 }
 
 .map-fallback {
@@ -41,6 +42,6 @@ button {
 }
 
 ::selection {
-  background: #ffe55b;
-  color: #2d4820;
+  background: #FBEF6F;
+  color: #1D1C17;
 }

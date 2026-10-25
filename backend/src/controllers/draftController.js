@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const { updateOrderStatus } = require('../services/statusService');
 const { sendDraftRevisionNotification } = require('../services/notificationService');
+const { writeBackByKodeTracking } = require('../services/sheetsSyncService');
 const { KEPUTUSAN_CUSTOMER } = require('../constants');
 
 async function findOrder(kodeTracking) {
@@ -62,6 +63,19 @@ async function uploadDraft(req, res) {
       await sendDraftRevisionNotification(order.order_id);
     }
 
+    try {
+      await writeBackByKodeTracking('DRAFT', kode_tracking, {
+        linkDraft: link_draft,
+        tanggalUpload: new Date().toISOString().slice(0, 10),
+        keputusanCustomer: '',
+        tanggalKeputusan: '',
+        tindakLanjutAdmin: 'MENUNGGU TINDAKAN',
+        tanggalTindakLanjut: '',
+      });
+    } catch (sheetErr) {
+      console.error(`[WRITE_BACK] uploadDraft gagal sync Sheets (${kode_tracking}):`, sheetErr.message);
+    }
+
     return res.status(201).json({ message: `Draft versi ${versiBaru} berhasil diupload.`, versi_draft: versiBaru });
   } catch (err) {
     console.error(err);
@@ -115,10 +129,23 @@ async function recordDecision(req, res) {
       });
     }
 
+    const now = new Date();
+    const tanggalKeputusan = now.toISOString().slice(0, 10);
+
     await pool.query(
       'UPDATE drafts SET keputusan_customer = ?, tanggal_keputusan = NOW() WHERE draft_id = ?',
       [keputusan, latest.draft_id]
     );
+
+    // Tulis-balik ke Google Sheets (non-blocking)
+    try {
+      await writeBackByKodeTracking('DRAFT', kode_tracking, {
+        keputusanCustomer: keputusan,
+        tanggalKeputusan: tanggalKeputusan,
+      });
+    } catch (sheetErr) {
+      console.error(`[WRITE_BACK] recordDecision gagal sync Sheets (${kode_tracking}):`, sheetErr.message);
+    }
 
     if (keputusan === 'SETUJU') {
       return res.json({
@@ -185,6 +212,9 @@ async function proceedToPengesahan(req, res) {
       });
     }
 
+    const now = new Date();
+    const tanggalTindakLanjut = now.toISOString().slice(0, 10);
+
     await pool.query(
       `UPDATE drafts SET tindak_lanjut_admin = 'LANJUT_KE_PENGESAHAN', tanggal_tindak_lanjut = NOW()
        WHERE draft_id = ?`,
@@ -197,6 +227,16 @@ async function proceedToPengesahan(req, res) {
       'Draft disetujui customer, dilanjutkan admin ke Pengesahan',
       'ADMIN_MANUAL'
     );
+
+    // Tulis-balik ke Google Sheets (non-blocking)
+    try {
+      await writeBackByKodeTracking('DRAFT', kode_tracking, {
+        tindakLanjutAdmin: 'LANJUT_KE_PENGESAHAN',
+        tanggalTindakLanjut: tanggalTindakLanjut,
+      });
+    } catch (sheetErr) {
+      console.error(`[WRITE_BACK] proceedToPengesahan gagal sync Sheets (${kode_tracking}):`, sheetErr.message);
+    }
 
     return res.json({ message: 'Order dilanjutkan ke tahap Pengesahan.', current_status: 'PENGESAHAN' });
   } catch (err) {

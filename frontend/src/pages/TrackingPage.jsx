@@ -5,13 +5,26 @@ import { fadeUp, staggerContainer } from '../components/AnimatedSection'
 import { Footer } from '../components/Footer'
 import { processSteps, sampleFlowCards } from '../data/siteData'
 
+// Format resmi: NNNN/MM/YYYY(CODE) — contoh: 0001/01/2006(I), 0084/05/2026(L)
+// Format legacy/mock: LAB-2026-9001
+const TRACKING_CODE_REGEX = /^(\d{4}\/\d{2}\/\d{4}\([A-Za-z]+\)|[A-Za-z0-9_-]+)$/
+
 function SearchPanel({ onNavigate }) {
   const [kodeTracking, setKodeTracking] = useState('')
+  const [error, setError] = useState('')
 
   function handleSubmit(event) {
     event.preventDefault()
+    setError('')
     const trimmed = kodeTracking.trim()
-    if (!trimmed) return
+    if (!trimmed) {
+      setError('Silakan masukkan nomor order atau kode tracking Anda.')
+      return
+    }
+    if (!TRACKING_CODE_REGEX.test(trimmed)) {
+      setError('Format kode tracking tidak valid (contoh format resmi: 0001/01/2006(I) atau LAB-2026-9001).')
+      return
+    }
     onNavigate('status', trimmed)
   }
 
@@ -27,10 +40,13 @@ function SearchPanel({ onNavigate }) {
             <span className="sr-only">Kode tracking sampel</span>
             <input
               className="w-full border-0 bg-transparent text-base font-medium text-leaf-900 outline-none placeholder:text-[#b5b8ae]"
-              placeholder="Masukkan Kode Tracking (contoh: LAB-2026-0001)"
+              placeholder="Masukkan Nomor Order (contoh: 0001/01/2006(I) atau LAB-2026-9001)"
               name="trackingCode"
               value={kodeTracking}
-              onChange={(event) => setKodeTracking(event.target.value)}
+              onChange={(event) => {
+                setKodeTracking(event.target.value)
+                if (error) setError('')
+              }}
             />
           </label>
           <motion.button className="m-2 inline-flex min-h-[48px] items-center justify-center gap-2 rounded bg-leaf-800 px-5 text-xs font-extrabold tracking-[0.08em] text-white transition-colors duration-200 hover:bg-leaf-900" type="submit" whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }}>
@@ -38,6 +54,12 @@ function SearchPanel({ onNavigate }) {
             Lacak Sekarang
           </motion.button>
         </motion.form>
+
+        {error && (
+          <motion.p className="mt-3 text-sm font-semibold text-red-600" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
+            {error}
+          </motion.p>
+        )}
       </motion.div>
     </section>
   )
@@ -52,7 +74,7 @@ function ProcessSection() {
           <p className="mt-3 text-base font-medium text-[#46503e]">Standar operasional prosedur pengujian sampel di Lab KTNT</p>
         </motion.div>
 
-        <motion.div className="relative mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-7 lg:gap-4" initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }} variants={staggerContainer}>
+        <motion.div className="relative mt-14 grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-4" initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }} variants={staggerContainer}>
           <div className="absolute left-0 right-0 top-8 hidden h-px bg-leaf-900/15 lg:block" />
           {processSteps.map((step) => {
             const Icon = step.icon
